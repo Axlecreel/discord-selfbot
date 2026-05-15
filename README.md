@@ -3,8 +3,8 @@
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yashksaini-coder/auto-msg-discord
-cd auto-msg-discord
+git clone https://github.com/Axlecreel/discord-selfbot.git
+cd
 ```
 
 2. Create and activate virtual environment:
