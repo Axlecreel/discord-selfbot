@@ -25,3 +25,10 @@ pip install -r requirements.txt  # Or use `uv pip install` if available
 ```bash
 python bot.py
 ```
+
+
+4. Run the bot:
+
+```bash
+Project originally from https://github.com/yashksaini-coder/Auto-MSG-Discord 
+```
