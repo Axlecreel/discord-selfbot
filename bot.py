@@ -1,4 +1,3 @@
-#!/home/axle/myenv/bin/python
 from http.client import HTTPSConnection 
 from json import dumps, loads
 from time import sleep 
@@ -131,7 +130,7 @@ def send_message_with_retry(cid, data, token, name):
         try:
             conn = HTTPSConnection("discordapp.com", 443, timeout=10)
             conn.request("POST", f"/api/v9/channels/{cid}/messages", data, {"content-type": "application/json", "authorization": token}) 
-            resp = conn.getcall = conn.getcall = conn.getresponse() 
+            resp = conn.getresponse() 
             
             if 199 < resp.status < 300: 
                 total_sent_global += 1
@@ -211,7 +210,7 @@ def fetch_channel_and_guild_info(cid, token):
     try:
         conn = HTTPSConnection("discordapp.com", 443, timeout=10)
         conn.request("GET", f"/api/v9/channels/{cid}", body=None, headers={"authorization": token})
-        resp = conn.getcall = conn.getcall = conn.getresponse()
+        resp = conn.getresponse()
         if 199 < resp.status < 300:
             channel_data = loads(resp.read().decode())
             channel_name = channel_data.get("name", "Unknown-Channel")
@@ -220,7 +219,7 @@ def fetch_channel_and_guild_info(cid, token):
             server_name = "Direct Message / Group"
             if guild_id:
                 conn.request("GET", f"/api/v9/guilds/{guild_id}", body=None, headers={"authorization": token})
-                g_resp = conn.getcall = conn.getcall = conn.getcall = conn.getcall = conn.getcall = conn.getcall = conn.getresponse()
+                g_resp = conn.getresponse()
                 if 199 < g_resp.status < 300:
                     guild_data = loads(g_resp.read().decode())
                     server_name = guild_data.get("name", "Unknown Server")
@@ -265,19 +264,22 @@ def setup_wizard():
     config = load_config()
     tok = config.get("Discord_Token")
     
+    if not tok or not tok.strip():
+        console.print("[bold red]Error: Cannot add channels without a Discord Token. Please update your token first.[/bold red]")
+        sleep(2)
+        return
+    
     cid = Prompt.ask("Channel ID (or 'c' to cancel)")
     if cid.lower() == 'c': return
     
-    server_name, channel_name = None, None
-    if tok and tok.strip():
-        with console.status("[bold cyan]Fetching channel and server details...[/bold cyan]"):
-            server_name, channel_name = fetch_channel_and_guild_info(cid, tok)
+    with console.status("[bold cyan]Fetching channel and server details...[/bold cyan]"):
+        server_name, channel_name = fetch_channel_and_guild_info(cid, tok)
             
     if server_name and channel_name:
         console.print(f"[bold green]✓ Connected to Server: [yellow]{server_name}[/yellow] | Channel: [yellow]#{channel_name}[/yellow][/bold green]\n")
         default_name = channel_name
     else:
-        console.print("[bold yellow]⚠ Could not fetch details automatically (Check your Discord Token or ID).[/bold yellow]\n")
+        console.print("[bold yellow]⚠ Could not fetch details automatically.[/bold yellow]\n")
         default_name = ""
 
     name = Prompt.ask("Nickname (or 'c' to cancel)", default=default_name)
@@ -328,7 +330,6 @@ def edit_message_wizard():
             console.print(f"[bold red]Error: '{choice}' is not a valid ID.[/bold red]")
             sleep(1)
 
-    console.print()  # Table stays completely untouched and on-screen
     new_msg = get_multiline_input("Enter new message")
     if new_msg.lower() == 'c': return
     if choice.lower() == 'all':
@@ -357,7 +358,6 @@ def interval_wizard():
         console.print("[bold red]Invalid selection. Try again.[/bold red]")
         sleep(1)
     
-    console.print()  # Keeping table view visible above values input
     while True:
         try:
             mini = float(Prompt.ask("New Min"))
@@ -379,32 +379,42 @@ def delete_channel_wizard():
     config = load_config()
     if not config or not config.get("Config"): 
         console.clear()
-        console.print("[bold red]No channels found in the active profile! Please add a channel first.[/bold red]")
+        console.print("[bold red]No channels found in the active profile![/bold red]")
         sleep(2)
         return
         
     while True:
         console.clear()
         display_channel_content_table(config, "Select Channel to Delete")
-        choice = Prompt.ask("Select ID to delete or 'c' to cancel")
+        console.print("[dim]Use 'all' to delete ALL channels in this profile.[/dim]")
+        choice = Prompt.ask("Select ID, 'all', or 'c' to cancel")
         if choice.lower() == 'c': return
+        
+        if choice.lower() == 'all':
+            confirm = Prompt.ask("[bold red]Are you absolutely sure you want to delete ALL channels?[/bold red] (y/n)", choices=["y", "n"], default="n")
+            if confirm.lower() == 'y':
+                config["Config"] = []
+                save_config(config)
+                console.print("[bold green]All channels deleted.[/bold green]")
+                sleep(1.5)
+            return
+
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(config["Config"]):
                 target_name = config["Config"][idx]["name"]
-                console.print()  # Don't erase the table preview window
-                confirm = Prompt.ask(f"Are you sure you want to delete '[bold red]{target_name}[/bold red]'? (y/n)", choices=["y", "n"], default="n")
+                confirm = Prompt.ask(f"Delete '[bold red]{target_name}[/bold red]'? (y/n)", choices=["y", "n"], default="n")
                 if confirm.lower() == 'y':
                     config["Config"].pop(idx)
                     save_config(config)
                     console.print(f"[bold green]Successfully deleted '{target_name}'.[/bold green]")
                     sleep(1.5)
                 break
-            console.print("[bold red]ID out of range.[/bold red]")
-            sleep(1)
+            else:
+                console.print("[bold red]ID out of range.[/bold red]")
         except ValueError:
-            console.print("[bold red]Please enter a valid number ID.[/bold red]")
-            sleep(1)
+            console.print("[bold red]Please enter a valid number or 'all'.[/bold red]")
+        sleep(1)
 
 # --- Config Loadout Management Wizard ---
 def profile_manager_wizard():
@@ -418,10 +428,10 @@ def profile_manager_wizard():
         table.add_column("Profile Name", style="green")
         table.add_column("Channels Connected", justify="center", style="blue")
         table.add_column("Discord Token State", style="white")
-        table.add_column("Active Profile Status", justify="center", style="magenta")
+        table.add_column("Active", justify="center", style="magenta")
         
         for i, p in enumerate(profiles):
-            status = "[bold yellow]● ACTIVE[/bold yellow]" if p == active else ""
+            status = "[bold yellow]●[/bold yellow]" if p == active else ""
             p_file = get_profile_filename(p)
             channels_count = "0"
             token_status = "[bold red]Missing[/bold red]"
@@ -433,128 +443,45 @@ def profile_manager_wizard():
                         channels_count = str(len(p_data.get("Config", [])))
                         tok = p_data.get("Discord_Token", "")
                         if tok and tok.strip():
-                            token_status = f"[bold green]Configured ({tok[:4]}...{tok[-4:] if len(tok) > 4 else ''})[/bold green]"
+                            token_status = f"[bold green]Configured[/bold green]"
                 except Exception: pass
                 
             table.add_row(str(i+1), p, channels_count, token_status, status)
             
         console.print(table)
-        console.print("\n1. [bold green]Switch Profile[/bold green]\n2. [bold cyan]Create New Profile[/bold cyan]\n3. [bold yellow]Rename Profile[/bold yellow]\n4. [bold blue]Clone Profile[/bold blue]\n5. [bold red]Delete Profile[/bold red]\n6. Go Back")
+        console.print("\n1. [bold green]Switch Profile[/bold green]\n2. [bold cyan]Create New[/bold cyan]\n3. [bold yellow]Rename[/bold yellow]\n4. [bold blue]Clone[/bold blue]\n5. [bold red]Delete Profile[/bold red]\n6. Go Back")
         choice = Prompt.ask("Action", choices=["1","2","3","4","5","6"])
         
         if choice == "1":
-            idx_str = Prompt.ask("Select Profile ID to switch to (or 'c' to cancel)")
-            if idx_str.lower() == 'c': continue
+            idx_str = Prompt.ask("Switch to Profile ID")
             try:
                 idx = int(idx_str) - 1
                 if 0 <= idx < len(profiles):
                     mgr = get_manager()
                     mgr["active_profile"] = profiles[idx]
                     save_manager(mgr)
-                    console.print(f"[bold green]Switched to profile '{profiles[idx]}'.[/bold green]")
-                    sleep(1.2)
-            except ValueError: pass
-            
+            except (ValueError, IndexError): pass
         elif choice == "2":
-            new_name = Prompt.ask("Enter new profile name (or 'c' to cancel)").strip()
-            if new_name.lower() == 'c' or not new_name: continue
-            clean_name = "".join([c for c in new_name if c.isalnum() or c in ('-', '_')]).strip()
-            if not clean_name:
-                console.print("[bold red]Invalid alphanumeric characters.[/bold red]"); sleep(1.2); continue
-                
+            new_name = Prompt.ask("New Profile Name").strip()
+            if not new_name: continue
+            clean_name = "".join([c for c in new_name if c.isalnum() or c in ('-', '_')])
             filename = get_profile_filename(clean_name)
-            if os.path.exists(filename):
-                console.print("[bold red]Profile already exists.[/bold red]"); sleep(1.2); continue
-                
-            with open(filename, 'w') as f:
-                json.dump({"Discord_Token": "", "Config": []}, f, indent=4)
-            console.print(f"[bold green]Profile '{clean_name}' created successfully![/bold green]")
-            sleep(1.2)
-            
-        elif choice == "3":
-            idx_str = Prompt.ask("Select Profile ID to rename (or 'c' to cancel)")
-            if idx_str.lower() == 'c': continue
-            try:
-                idx = int(idx_str) - 1
-                if 0 <= idx < len(profiles):
-                    old_name = profiles[idx]
-                    new_name = Prompt.ask(f"Enter new name for '{old_name}' (or 'c' to cancel)").strip()
-                    if new_name.lower() == 'c' or not new_name: continue
-                    clean_name = "".join([c for c in new_name if c.isalnum() or c in ('-', '_')]).strip()
-                    if not clean_name: continue
-                    
-                    old_file = get_profile_filename(old_name)
-                    new_file = get_profile_filename(clean_name)
-                    if os.path.exists(new_file):
-                        console.print("[bold red]Profile target name already exists.[/bold red]"); sleep(1.2); continue
-                    
-                    if os.path.exists(old_file):
-                        os.rename(old_file, new_file)
-                    else:
-                        with open(new_file, 'w') as f:
-                            json.dump({"Discord_Token": "", "Config": []}, f, indent=4)
-                            
-                    if old_name == active:
-                        mgr = get_manager()
-                        mgr["active_profile"] = clean_name
-                        save_manager(mgr)
-                    console.print(f"[bold green]Profile successfully renamed to '{clean_name}'.[/bold green]")
-                    sleep(1.2)
-            except ValueError: pass
-            
-        elif choice == "4":
-            idx_str = Prompt.ask("Select Profile ID to clone (or 'c' to cancel)")
-            if idx_str.lower() == 'c': continue
-            try:
-                idx = int(idx_str) - 1
-                if 0 <= idx < len(profiles):
-                    src_name = profiles[idx]
-                    new_name = Prompt.ask(f"Enter name for clone of '{src_name}' (or 'c' to cancel)").strip()
-                    if new_name.lower() == 'c' or not new_name: continue
-                    clean_name = "".join([c for c in new_name if c.isalnum() or c in ('-', '_')]).strip()
-                    if not clean_name: continue
-                    
-                    src_file = get_profile_filename(src_name)
-                    new_file = get_profile_filename(clean_name)
-                    if os.path.exists(new_file):
-                        console.print("[bold red]Destination profile already exists.[/bold red]"); sleep(1.2); continue
-                    
-                    if os.path.exists(src_file):
-                        shutil.copyfile(src_file, new_file)
-                    else:
-                        with open(new_file, 'w') as f:
-                            json.dump({"Discord_Token": "", "Config": []}, f, indent=4)
-                            
-                    console.print(f"[bold green]Cloned profile '{src_name}' into '{clean_name}'.[/bold green]")
-                    sleep(1.2)
-            except ValueError: pass
-            
+            if not os.path.exists(filename):
+                with open(filename, 'w') as f:
+                    json.dump({"Discord_Token": "", "Config": []}, f, indent=4)
         elif choice == "5":
-            idx_str = Prompt.ask("Select Profile ID to delete (or 'c' to cancel)")
-            if idx_str.lower() == 'c': continue
+            idx_str = Prompt.ask("Delete Profile ID")
             try:
                 idx = int(idx_str) - 1
-                if 0 <= idx < len(profiles):
+                if 0 <= idx < len(profiles) and len(profiles) > 1:
                     del_name = profiles[idx]
-                    if len(profiles) <= 1:
-                        console.print("[bold red]Cannot delete the only existing configuration system profile.[/bold red]")
-                        sleep(1.5); continue
-                    confirm = Prompt.ask(f"Completely remove profile loadout file '[bold red]{del_name}[/bold red]'? (y/n)", choices=["y", "n"], default="n")
-                    if confirm.lower() == 'y':
-                        del_file = get_profile_filename(del_name)
-                        if os.path.exists(del_file):
-                            os.remove(del_file)
-                        if del_name == active:
-                            remaining = [p for p in profiles if p != del_name]
-                            mgr = get_manager()
-                            mgr["active_profile"] = remaining[0]
-                            save_manager(mgr)
-                        console.print(f"[bold green]Successfully deleted profile loadout file '{del_name}'.[/bold green]")
-                        sleep(1.2)
-            except ValueError: pass
-            
-        elif choice == "6":
-            break
+                    os.remove(get_profile_filename(del_name))
+                    if del_name == active:
+                        mgr = get_manager()
+                        mgr["active_profile"] = [p for p in profiles if p != del_name][0]
+                        save_manager(mgr)
+            except (ValueError, IndexError): pass
+        elif choice == "6": break
 
 # --- Utilities ---
 def get_multiline_input(prompt_text):
